@@ -1,0 +1,253 @@
+*contextualize.txt*	For Vim version 8.0	Last change: 2020 Dec 07
+
+Author:  Emilia Simmons
+License: Same terms as Vim (see |license|)
+
+===============================================================================
+                                       *contextualize* *contextualize-contents*
+CONTENTS~
+
+    1. Contents ...................................... |contextualize-contents|
+    2. Overview ...................................... |contextualize-overview|
+    3. Usage ............................................ |contextualize-usage|
+    4. Commands ...................................... |contextualize-commands|
+    5. Functions .................................... |contextualize-functions|
+    6. Examples ...................................... |contextualize-examples|
+    7. Issues .......................................... |contextualize-issues|
+
+
+===============================================================================
+OVERVIEW                                               *contextualize-overview*
+
+Contextualize.vim provides set of commands for managing contextual maps.
+I assume most people have seen something like the following maps, used to
+allow the user to press `<Cr>` to select a menu on the |popup-menu|, and
+`<Tab>` and `<S-Tab>` to scroll: >
+  inoremap <expr> <Cr> pumvisible() ? "\<C-y>" : "\<Cr>"
+  inoremap <expr> <Tab> pumvisible() ? "\<C-n>" : "\<Tab>"
+  inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
+<
+This is great! But what if I also want start arming `<Tab>` with a variety of
+other context-specific actions? How about this: >
+  ContextAdd pumvis {-> pumvisible()}
+  Contextualize pumvis inoremap <Cr> <C-y>
+  Contextualize pumvis inoremap <Tab> <C-n>
+  Contextualize pumvis inoremap <S-Tab> <C-p>
+Contextualize will set defaults for these maps to whatever they are already
+mapped to. >
+
+  " This returns true if characters to the right are all )]}
+  ContextAdd parens {-> getline('.')[col('.') - 1 :] =~ '^[\])}]\+'}
+  Contextualize parens inoremap <expr> <Tab> repeat('<Right>', match(getline('.')[col('.') - 1 :], '[\])}]\+\zs'))
+  Contextualize {-> getline('.')[col('.') - 2 : col('.') - 1] == '{}'} inoremap <Cr> <Cr><C-o>O
+<
+Here, `<Tab>` will scroll through the popup-menu, but it will also "jump" out
+of some nested parentheses. See |contextualize-examples| for more. The second
+Contextualize command uses an anonymous context (simply defined on the line
+via a |lambda| expression) to allow `<Cr>` to expand
+
+This plugin functions by maintaining a dictionary of contexts, and a dict
+for each contextual map desired. When a contextualize'd map is executed, it
+will check each context in order of declaration, and execute the first one
+that is successful.
+Contextualize.vim may work with vim versions > 7.4, but is currently untested.
+
+===============================================================================
+USAGE                                                     *contextualize-usage*
+
+Load the plugin, if you are using a plugin manager that utilizes vim's
+|packages| feature, then you might need to load the plugin explicitly to ensure
+the commands are defined: `packadd contextualize.vim` (note the lack of `!`)
+
+
+Create a context with |ContextAdd|, then map a command as follows: >
+  ContextAdd pumv {-> pumvisible()}
+  Contextualize pumv inoremap <Tab> <C-n>
+  Contextualize pumv inoremap <S-Tab> <C-p>
+<
+
+The intent of the commands provided are to drop in front of a map command that
+you know functions on its own: >
+ map lhs rhs
+ unmap lhs
+
+ Contextualize somecontext map lhs rhs
+ Contextualize somecontext unmap lhs
+<
+
+Works as expected.
+
+===============================================================================
+COMMANDS                                               *contextualize-commands*
+
+:ContextAdd [<buffer>] {name} {function}                          *:ContextAdd*
+    Create a context. `{function}` can be a function name or |expr-lambda|.
+    `{function}` is allowed to take arguments, see |:Contextualize| for usage.
+    When executing a mapping, it will check each context in order of
+    declaration, executing the first mapping associated with the context that
+    returns |TRUE|.
+
+:ContextDel [<buffer>] {name}                                     *:ContextDel*
+    Remove a context. All associated maps will be removed as well.
+
+:Contextualize {context} [args] {mapcmd} [opts] {lhs} [rhs]    *:Contextualize*
+    Create a map for `{lhs}` in `{context}`.
+    `{mapcmd}` must not be shortened: |:nn| is equivalent to |:nnoremap|, but
+    mappings in Contextualize.vim must be explicit and match the full command.
+    Additionally, the mode must be added: |:nmap|, |:inoreabbrev|, and
+    |:onoremap| are accepted, but |:map| is not.
+    Specifically, the command must match the regex:
+    `'\v<([nvoicsxlt])(nore|un)?(map|abbrev)>'`
+
+    For example as above:
+    `Contextualize pumv inoremap <Tab> <C-n>`
+
+    `[args]` will be passed to the `{function}` from |:ContextAdd|, the number
+    of arguments supplied must be supported by the context checking function!
+    The `[args]` are for passing arguments to the context function. That is,
+    `[args]` are for modifying behavior at the time of mapping.
+
+    If `{context}` is `default`, this map will be executed if all context
+    functions evaluate to false. By default, creating a contextmap will
+    try to extract your map from `{lhs}` in the appropriate mode and type
+    using |maparg()|. If it is empty, the default will be assigned to `{lhs}`.
+
+    If `{context}` is a |lambda| expression, then an anonymous context will be
+    created. This context is available only to this map, and arguments are not
+    allowed.
+
+    `[opts]` supported are |:map-<buffer>|, |:map-<expr>|, and |:map-<silent>|.
+
+
+    See |contextualize-examples| for other examples.
+
+:Decontextualize [context] {unmapcmd} <buffer> {lhs}         *:Decontextualize*
+    Remove a map for `{lhs}`, `{unmapcmd}` is used to determine the mode
+    (insert, normal, etc) and type (`map` or `abbrev`) of the mapping.
+    If `[context]` is not provided, all context mappings will be removed from
+    `{lhs}` in the appropriate mode/type, including the 'default' context.
+    Otherwise it will remove only the mapping in `[context]`.
+    If `[context]` is `default`
+    For example: >
+    Decontextualize pumv imap <Tab>
+    Decontextualize imap <Tab>
+    Decontextualize default imap <Tab>
+<
+    Note `imap`, `inoremap`, and `iunmap` are functionally identical here. Only
+    the mode and type are extracted.
+
+:InspectContextMap {mapcmd} [<buffer>] {lhs}                 *:Decontextualize*
+    Print the contexts and rhs of each map for `{lhs}`.
+
+
+===============================================================================
+FUNCTIONS                                             *contextualize-functions*
+
+These are intended for more advanced use of the plugin.
+
+contextualize#add_context(name, func[, buffer])   *contextualize#add_context()*
+    Create a context named `{name}`, `{func}` should be a funcref.
+    `{buffer}` is true or false, if the context should be buffer specific.
+
+contextualize#del_context(name[, buffer])         *contextualize#del_context()*
+    Delete a context named `{name}`,
+    `{buffer}` is true or false, if the context should be buffer specific.
+
+contextualize#in(name[, args])                             *contextualize#in()*
+    Return whether the context called `{name}` is evaluated as true.
+    Particularly useful in the |statusline| for testing: >
+    set statusline+=%!contextualize#in('pumv')
+<
+
+contextualize#map(name, mode, type, lhs, rhs[, opts])     *contextualize#map()*
+
+contextualize#unmap(name, mode, type, lhs[, opts])      *contextualize#unmap()*
+
+
+===============================================================================
+EXAMPLES                                               *contextualize-examples*
+
+Integration with Ultisnips: >
+  let g:UltiSnipsExpandTrigger = "<Plug>(myUltiSnipsExpand)"
+  let g:UltiSnipsJumpForwardTrigger = "<Plug>(myUltiSnipsForward)"
+  let g:UltiSnipsJumpBackwardTrigger = "<Plug>(myUltiSnipsBackward)"
+<  Ultisnips will set up maps for these `<Plug>` maps, which we can use in
+  various contexts.
+
+  These two maps will be the default >
+  imap <Tab> <Plug>(myUltiSnipsExpand)
+  xmap <Tab> <Plug>(myUltiSnipsExpand)
+<
+  Ultisnips provides us conveniently with autocmds for entering/exiting snippets >
+  augroup vimrc_contextualize
+    autocmd!
+    autocmd User UltiSnipsEnterFirstSnippet let g:in_snippet = 1
+    autocmd User UltiSnipsExitLastSnippet unlet! g:in_snippet
+  augroup END
+
+  ContextAdd insnippet {-> exists('g:in_snippet')}
+  ContextAdd pumvis {-> pumvisible()}
+  Contextualize pumvis imap <Tab> <C-n>
+  Contextualize pumvis imap <S-Tab> <C-p>
+  Contextualize insnippet imap <Tab> <Plug>(myUltiSnipsForward)
+  Contextualize insnippet imap <S-Tab> <Plug>(myUltiSnipsBackward)
+  Contextualize insnippet smap <Tab> <Plug>(myUltiSnipsForward)
+  Contextualize insnippet smap <S-Tab> <Plug>(myUltiSnipsBackward)
+<
+
+Command line abbreviations that only work at the start of the command line.
+Here we use a dict function so we don't have to use an argument for each of the
+context maps. >
+  function! s:startcmd() abort dict
+    return getcmdtype()==":" && getcmdline()==self.lhs
+  endfunction
+  ContextAdd startcmd s:startcmd
+<  Here, the s: is parsed properly as long as ContextAdd is executed from
+  within a script
+>
+
+  " vimgrep all files with same filetype: expand this one with <C-]>
+  Contextualize startcmd cnoreabbrev <expr> vga 'vimgrep // **/*.' . expand('%:e') . "\<C-Left><Left><Left>"
+  Contextualize startcmd cnoreabbrev h vert help
+
+  " Clear [loc/qf] list
+  Contextualize startcmd cnoreabbrev cll call setloclist(empty(<q-args>) ? 0 : bufnr(<q-args>), [])
+  Contextualize startcmd cnoreabbrev cqf call setqflist([])
+<
+
+Autopairs funcionality, this can be easily expanded upon thoroughly, to fine
+tune exactly how you want your autopairs to behave: >
+
+  " Note: col-2 is the character before the cursor.
+  ContextAdd pairallowed {-> getline('.')[col('.') - 2] =~? '[ ([{)\]}]\|^'}
+  ContextAdd completepair {close -> getline('.')[col('.') - 1] == close}
+  let pairs = ['()', '[]', '{}']
+  ContextAdd delpair {-> getline('.')[col('.') - 2 : col('.')] =~ '^\%(\V()\|{}\|[]\|''''\|""\)'}
+
+  for pair in pairs
+    call contextualize#map('pairallowed' , 'i', 'map', pair[0], pair . '<C-g>U<Left>')
+    call contextualize#map('pairallowed' , 's', 'map', pair[0], pair . '<C-g>U<Left>')
+    call contextualize#map('completepair', 'i', 'map', pair[1], '<C-g>U<Right>'               , {'args': pair[1]})
+  endfor
+
+  Contextualize delpair inoremap <Bs> <BS><Del>
+<
+
+==============================================================================
+ISSUES                                                  *contextualize-issues*
+
+|feedkeys()| and |:normal| may not behave as expected when using
+context-sensitive maps. For example, with the following maps:
+>
+  ContextAdd emptyline {-> empty(getline('.'))}
+  Contextualize emptyline inoremap a aa
+<
+Opening a new line and typing `aa` in insert mode will yield `aaa`. However,
+the results from `feedkeys('oaa')` is `aaaa` (regardless of flags). It looks
+like vim remaps each `a` at the same time, effectively, for this example.
+
+A workaround would be to use multiple |feedkeys()| calls. |:normal| has the
+same caveats.
+
+
+vim:tw=78:et:ft=help:norl:
