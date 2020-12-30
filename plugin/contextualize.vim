@@ -88,6 +88,7 @@ function! contextualize#map(context, mode, type, lhs, rhs, ...) abort " {{{1
     call s:make_default_map(mapcontroller)
   elseif a:context == 'default'
     call s:make_default_map(mapcontroller)
+    let mapcontroller.default = s:make_plugmap('default', contextmap)
     return
   endif
 
@@ -141,10 +142,9 @@ function! contextualize#unmap(cname, mode, type, lhs, ...) abort " {{{1
   endif
 
   let context = s:get_context(a:cname)
-  let pluglhs = '<Plug>(contextualize-' . s:lower_keycodes(a:lhs, 1) . '-' . a:cname . ')'
   let buf = buffer ? '<buffer> ' : ''
   try
-    execute a:mode . 'unmap' buf . pluglhs
+    execute a:mode . 'unmap' buf . s:plugname(a:cname, a:lhs, buffer, 1)
   catch '^Vim\%((\a\+)\)\=:E\(24\|31\)'
     echoerr "No map found for: '" . a:mode . a:type buf . a:lhs . "' in context: '" . a:cname . "'"
   endtry
@@ -152,7 +152,7 @@ function! contextualize#unmap(cname, mode, type, lhs, ...) abort " {{{1
   call remove(mapcontroller.contexts, index(mapcontroller.contexts, a:cname))
   call remove(context.maps, mapcontroller.name)
 
-  let default = "<Plug>(contextualize-" . s:lower_keycodes(a:lhs) . '-default)'
+  let default = s:plugname('default', a:lhs, buffer, 1)
   if empty(mapcontroller.contexts) && mapcontroller.lhs == maparg(default, a:mode, 0, 1).rhs
     execute a:mode . 'un' . a:type buf . a:lhs
     execute a:mode . 'unmap' buf . default
@@ -200,10 +200,10 @@ endfunction
 function! s:do() abort dict " {{{1
   for context in self.contexts
     if self.maps[context].context()
-      return self.maps[context].rhs
+      return "\<Plug>" . self.maps[context].rhs[6:]
     endif
   endfor
-  return self.default.rhs
+  return "\<Plug>" . self.default.rhs[6:]
 endfunction
 
 function! s:get_context(name) abort " {{{1
@@ -300,8 +300,8 @@ function! s:make_default_map(mapcontroller) abort " {{{1
 
   let default = maparg(mc.lhs, mc.mode, mc.type == 'abbrev', 1)
   " if default is empty, there is no map (i.e 'j' moves down a line in normal mode)
-  if empty(default) || default.rhs =~# '^g:contextualize.*do()$'
-    let default = {'mode': mc.mode, 'lhs': mc.lhs, 'rhs': mc.lhs, 'noremap': 1}
+  if empty(default) || default.rhs =~# '^[bg]:contextualize.*do()$'
+    let default = {'mode': mc.mode, 'lhs': mc.lhs, 'rhs': mc.lhs, 'noremap': 1, 'buffer': mc.buffer}
   endif
   let mc.default = s:make_plugmap('default', default)
   " Bind s:do() as the map. Expr because we store the name of the map per context,
@@ -318,13 +318,18 @@ function! s:make_plugmap(cname, contextmap) abort " {{{1
   for optn in ['expr', 'buffer', 'silent', 'nowait']
     let cmd .= get(a:contextmap, optn, 0) ? ' <' . optn . '>' : ''
   endfor
-  let lhs = '(contextualize-' . s:lower_keycodes(a:contextmap.lhs) . '-' . a:cname . ')'
-  let cmd .= " <Plug>(contextualize-" . s:lower_keycodes(a:contextmap.lhs, 1) . '-' . a:cname . ')'
+  let cmd .= ' ' . s:plugname(a:cname, a:contextmap.lhs, a:contextmap.buffer, 1)
   let cmd .= ' ' . a:contextmap.rhs
   execute cmd
   let mapinfo = {'lhs': a:contextmap.lhs, 'name': a:cname}
-  let mapinfo.rhs = "\<Plug>(contextualize-" . s:lower_keycodes(a:contextmap.lhs) . '-' . a:cname . ')'
+  let mapinfo.rhs = s:plugname(a:cname, a:contextmap.lhs, a:contextmap.buffer)
   return mapinfo
+endfunction
+
+function! s:plugname(cname, lhs, buffer, ...) abort " {{{2
+  " a:1 is 'use <lt> for name?'
+  let name = (a:buffer ? 'buffer' : 'global') .'-'. s:lower_keycodes(a:lhs, get(a:, 1, 0))
+  return "<Plug>(contextualize-" . name . '-' . a:cname . ')'
 endfunction
 
 function! s:parse_and_map(sfile, qargs) abort " {{{1
