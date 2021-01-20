@@ -128,8 +128,8 @@ function! contextualize#unmap(cname, mode, type, lhs, ...) abort " {{{1
   " If last map in mapcontroller, and default is lhs, then unmap lhs
   " If context is anonymous, and last map just removed, remove anon context
   let buffer = get(a:, 1, 0)
-  let mapcontroller = s:get_mapcontroller({'buffer':buffer, 'lhs': a:lhs, 'mode': a:mode, 'type': a:type})
-  let default = {'mode': mapcontroller.mode, 'lhs': mapcontroller.lhs, 'rhs': mapcontroller.lhs, 'noremap': 1}
+  let mapcontroller = s:get_mapcontroller({'buffer': buffer, 'lhs': a:lhs, 'mode': a:mode, 'type': a:type})
+  let default = {'mode': mapcontroller.mode, 'lhs': mapcontroller.lhs, 'rhs': mapcontroller.lhs, 'noremap': 1, 'buffer': buffer}
   if a:cname == 'default'
     " Same as s:make_default_map
     let mapcontroller.default = s:make_plugmap('default', default)

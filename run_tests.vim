@@ -112,7 +112,7 @@ for test in testFunctions
   try
     call {test}()
   catch
-    call add(v:errors, 'Uncaught exception in: ' . v:exception . ' at ' . v:throwpoint)
+    call add(v:errors, 'Uncaught exception: ' . v:exception . ' at ' . v:throwpoint)
   endtry
   if !empty(v:errors)
     echohl Error
