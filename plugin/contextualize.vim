@@ -1,11 +1,6 @@
 " contextualize.vim
 " Author:    Emilia Simmons
-" Version:   0.1
 
-" normal cmd might not work as expected -- remapped to do() and evaluated all at once, instead
-" of sequentially
-
-" Contexts: {name, func}. Get
 let g:contexts = get(g:, 'contexts', {})
 let g:contextualize = get(g:, 'contextualize', {})
 let s:cmdregex = '\v<([nvoicsxlt])(nore|un)?(map|abbrev)>'
@@ -276,13 +271,14 @@ function! s:inspect(qargs) abort " {{{1
   let [mode, abbrev] = [mapcontroller.mode, mapcontroller.type == 'abbrev']
   echo (mapcontroller.name[0] == 'g' ? 'Global' : 'Buffer') 'map for' mapcontroller.lhs
   echo "Map controller at:" mapcontroller.name
-  let rhs = map(copy(mapcontroller.maps), 'maparg("<Plug>" . s:lower_keycodes(v:val.rhs[3:], 1), mode, abbrev, 1).rhs')
-  let rhs.default = maparg("<Plug>" . s:lower_keycodes(mapcontroller.default.rhs[3:], 1), mode, abbrev, 1).rhs
+  let rhs = map(copy(mapcontroller.maps), 'maparg("<Plug>" . s:lower_keycodes(v:val.rhs[6:], 1), mode, abbrev, 1)')
+  let rhs.default = maparg("<Plug>" . s:lower_keycodes(mapcontroller.default.rhs[6:], 1), mode, abbrev, 1).rhs
   let namew = max(map(copy(mapcontroller.contexts) + ['default'], 'len(v:val)'))
   echo 'Context' repeat(' ', namew-5) 'rhs'
-  for cname in mapcontroller.contexts + ['default']
-    echo '' cname . repeat(' ', namew-len(cname)) . ':  '  rhs[cname]
+  for cname in mapcontroller.contexts
+    echo '' cname . repeat(' ', namew-len(cname)) . ':  '  rhs[cname]['rhs']
   endfor
+  echo ' default' . repeat(' ', namew - 7) . ':  '  rhs['default']
 endfunction
 
 function! s:lower_keycodes(name, ...) abort " {{{1
