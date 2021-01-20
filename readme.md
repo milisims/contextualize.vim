@@ -29,9 +29,11 @@ ContextAdd startcmd {name -> getcmdtype()==":" && getcmdline()==name}
 Contextualize startcmd h cnoreabbrev h vert help
 Contextualize startcmd eft cnoreabbrev eft EditFtplugin
 Contextualize startcmd w2 cnoreabbrev w2 w
+" w2 for typos
 
-" Command to edit the 
-command! -complete=filetype -nargs=? EditFtplugin execute 'edit ~/.vim/after/ftplugin/' . (empty(expand('<args>')) ? &filetype : expand('<args>')) . '.vim'
+" Edit the current filetype's ftplugin
+command! -complete=filetype -nargs=? EditFtplugin execute 'edit ~/.vim/after/ftplugin/'
+      \ . (empty(expand('<args>')) ? &filetype : expand('<args>')) . '.vim'
 ```
 
 Function arguments for contexts are intended to be used as arguments
