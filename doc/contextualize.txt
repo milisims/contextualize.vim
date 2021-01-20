@@ -1,4 +1,4 @@
-*contextualize.txt*	For Vim version 8.0	Last change: 2020 Dec 07
+*contextualize.txt*	For Vim version 8.0	Last change: 2021 Jan 20
 
 Author:  Emilia Simmons
 License: Same terms as Vim (see |license|)
@@ -33,18 +33,9 @@ other context-specific actions? How about this: >
   Contextualize pumvis inoremap <Cr> <C-y>
   Contextualize pumvis inoremap <Tab> <C-n>
   Contextualize pumvis inoremap <S-Tab> <C-p>
-Contextualize will set defaults for these maps to whatever they are already
-mapped to. >
 
-  " This returns true if characters to the right are all )]}
-  ContextAdd parens {-> getline('.')[col('.') - 1 :] =~ '^[\])}]\+'}
-  Contextualize parens inoremap <expr> <Tab> repeat('<Right>', match(getline('.')[col('.') - 1 :], '[\])}]\+\zs'))
-  Contextualize {-> getline('.')[col('.') - 2 : col('.') - 1] == '{}'} inoremap <Cr> <Cr><C-o>O
-<
-Here, `<Tab>` will scroll through the popup-menu, but it will also "jump" out
-of some nested parentheses. See |contextualize-examples| for more. The second
-Contextualize command uses an anonymous context (simply defined on the line
-via a |lambda| expression) to allow `<Cr>` to expand
+Contextualize will set defaults (when you are not in a context) for `<Cr>`,
+`<Tab>`, and `<S-Tab>` to whatever they are already mapped to, if anything.
 
 This plugin functions by maintaining a dictionary of contexts, and a dict
 for each contextual map desired. When a contextualize'd map is executed, it
@@ -59,23 +50,28 @@ Load the plugin, if you are using a plugin manager that utilizes vim's
 |packages| feature, then you might need to load the plugin explicitly to ensure
 the commands are defined: `packadd contextualize.vim` (note the lack of `!`)
 
+There are 3 ways to create a context:
+1. Naming a function
+2. Naming a lambda expression
+3. Using an anonymous context directly in a |:Contextualize| command
 
+For example: >
+  ContextAdd namedfunc pumvisible
+  ContextAdd lambdacontext {-> pumvisible()}
+<
 Create a context with |ContextAdd|, then map a command as follows: >
   ContextAdd pumv {-> pumvisible()}
   Contextualize pumv inoremap <Tab> <C-n>
   Contextualize pumv inoremap <S-Tab> <C-p>
 <
-
 The intent of the commands provided are to drop in front of a map command that
 you know functions on its own: >
- map lhs rhs
- unmap lhs
+  map lhs rhs
+  unmap lhs
 
- Contextualize somecontext map lhs rhs
- Contextualize somecontext unmap lhs
-<
-
-Works as expected.
+  Contextualize somecontext map lhs rhs
+  Decontextualize somecontext unmap lhs
+<Works as expected.
 
 ===============================================================================
 COMMANDS                                               *contextualize-commands*
@@ -83,12 +79,11 @@ COMMANDS                                               *contextualize-commands*
 :ContextAdd [<buffer>] {name} {function}                          *:ContextAdd*
     Create a context. `{function}` can be a function name or |expr-lambda|.
     `{function}` is allowed to take arguments, see |:Contextualize| for usage.
-    When executing a mapping, it will check each context in order of
-    declaration, executing the first mapping associated with the context that
-    returns |TRUE|.
 
 :ContextDel [<buffer>] {name}                                     *:ContextDel*
     Remove a context. All associated maps will be removed as well.
+    If the last context map of a key is removed, the book keeping dict
+    will be removed.
 
 :Contextualize {context} [args] {mapcmd} [opts] {lhs} [rhs]    *:Contextualize*
     Create a map for `{lhs}` in `{context}`.
@@ -103,7 +98,9 @@ COMMANDS                                               *contextualize-commands*
     `Contextualize pumv inoremap <Tab> <C-n>`
 
     `[args]` will be passed to the `{function}` from |:ContextAdd|, the number
-    of arguments supplied must be supported by the context checking function!
+    of arguments supplied must be supported by the context checking function,
+    or an error will be thrown at time of checking the context.
+
     The `[args]` are for passing arguments to the context function. That is,
     `[args]` are for modifying behavior at the time of mapping.
 
@@ -118,6 +115,9 @@ COMMANDS                                               *contextualize-commands*
 
     `[opts]` supported are |:map-<buffer>|, |:map-<expr>|, and |:map-<silent>|.
 
+    When executing a mapping, it will check each context in order of
+    declaration, executing the first mapping associated with the context that
+    returns |TRUE|.
 
     See |contextualize-examples| for other examples.
 
@@ -127,8 +127,8 @@ COMMANDS                                               *contextualize-commands*
     If `[context]` is not provided, all context mappings will be removed from
     `{lhs}` in the appropriate mode/type, including the 'default' context.
     Otherwise it will remove only the mapping in `[context]`.
-    If `[context]` is `default`
-    For example: >
+    If `[context]` is `default`, then the default map will be reset to `{lhs}`
+    Usage: >
     Decontextualize pumv imap <Tab>
     Decontextualize imap <Tab>
     Decontextualize default imap <Tab>
@@ -143,8 +143,6 @@ COMMANDS                                               *contextualize-commands*
 ===============================================================================
 FUNCTIONS                                             *contextualize-functions*
 
-These are intended for more advanced use of the plugin.
-
 contextualize#add_context(name, func[, buffer])   *contextualize#add_context()*
     Create a context named `{name}`, `{func}` should be a funcref.
     `{buffer}` is true or false, if the context should be buffer specific.
@@ -156,13 +154,28 @@ contextualize#del_context(name[, buffer])         *contextualize#del_context()*
 contextualize#in(name[, args])                             *contextualize#in()*
     Return whether the context called `{name}` is evaluated as true.
     Particularly useful in the |statusline| for testing: >
-    set statusline+=%!contextualize#in('pumv')
+    set statusline=%!contextualize#in('pumv')
 <
-
 contextualize#map(name, mode, type, lhs, rhs[, opts])     *contextualize#map()*
+    Create a map in context `{name}`, in mode `{mode}`. `{type}` must be "map"
+    or "abbrev". Analagous to >
+    Contextualize {name} {opts.args} {mode}{opts.nore}{map} {lhs} {rhs}
+<
+    `{opts}` is a dictionary containing (optional) keys:
+        buffer   |TRUE| if this should be treated like |:map-<buffer>|
+        expr     |TRUE| if this should be treated like |:map-<expr>|
+        silent   |TRUE| if this should be treated like |:map-<silent>|
+        sid      Script id or name to replace any instances of |<SID>| with. The
+                 name can be obtained with `expand('<sfile>')`in the script
+                 being |:source|d
+        args     List of arguments passed to context function.
 
-contextualize#unmap(name, mode, type, lhs[, opts])      *contextualize#unmap()*
+    If there is no key named `sid`, and there is an `<SID>` in the `{rhs}`,
+    an error will be thrown.
 
+contextualize#unmap(name, mode, type, lhs[, buffer])    *contextualize#unmap()*
+    Unmap `{lhs}` in context `{name}` in mode `{mode}`. `{type}` must be "map" or
+    "abbrev".
 
 ===============================================================================
 EXAMPLES                                               *contextualize-examples*
@@ -206,8 +219,8 @@ context maps. >
   within a script
 >
 
-  " vimgrep all files with same filetype: expand this one with <C-]>
-  Contextualize startcmd cnoreabbrev <expr> vga 'vimgrep // **/*.' . expand('%:e') . "\<C-Left><Left><Left>"
+  " vimgrep all files with same filetype: expand this one by typing /
+  Contextualize startcmd cnoreabbrev <expr> vga 'vimgrep / **/*.' . expand('%:e') . "\<C-Left><Left><Left>"
   Contextualize startcmd cnoreabbrev h vert help
 
   " Clear [loc/qf] list
@@ -218,19 +231,27 @@ context maps. >
 Autopairs funcionality, this can be easily expanded upon thoroughly, to fine
 tune exactly how you want your autopairs to behave: >
 
-  " Note: col-2 is the character before the cursor.
-  ContextAdd pairallowed {-> getline('.')[col('.') - 2] =~? '[ ([{)\]}]\|^'}
+  ContextAdd pairallowed {-> getline('.')[col('.') - 1] =~ '\W' || col('.') == col('$')}
   ContextAdd completepair {close -> getline('.')[col('.') - 1] == close}
-  let pairs = ['()', '[]', '{}']
-  ContextAdd delpair {-> getline('.')[col('.') - 2 : col('.')] =~ '^\%(\V()\|{}\|[]\|''''\|""\)'}
+  ContextAdd pairsurround {-> getline('.')[col('.') - 2 : col('.')] =~ '^\%(\V()\|{}\|[]\|''''\|""\)'}
+  ContextAdd quoteallowed {-> getline('.')[col('.') - 2 : col('.') - 1] !~ '\w'}
 
-  for pair in pairs
+  for pair in ['()', '[]', '{}']
     call contextualize#map('pairallowed' , 'i', 'map', pair[0], pair . '<C-g>U<Left>')
     call contextualize#map('pairallowed' , 's', 'map', pair[0], pair . '<C-g>U<Left>')
-    call contextualize#map('completepair', 'i', 'map', pair[1], '<C-g>U<Right>'               , {'args': pair[1]})
+    call contextualize#map('completepair', 'i', 'map', pair[1], '<C-g>U<Right>', {'args': pair[1]})
   endfor
 
-  Contextualize delpair inoremap <Bs> <BS><Del>
+  Contextualize completepair ' inoremap ' <C-g>U<Right>
+  Contextualize completepair " inoremap " <C-g>U<Right>
+  Contextualize quoteallowed inoremap ' ''<C-g>U<Left>
+  Contextualize quoteallowed inoremap " ""<C-g>U<Left>
+  Contextualize quoteallowed snoremap ' ''<C-g>U<Left>
+  Contextualize quoteallowed snoremap " ""<C-g>U<Left>
+
+  Contextualize pairsurround inoremap <Bs> <BS><Del>
+  Contextualize pairsurround inoremap <Cr> <Cr><C-o>O
+  Contextualize pairsurround inoremap <Space> <Space><Space><C-g>U<Left>
 <
 
 ==============================================================================
@@ -248,6 +269,10 @@ like vim remaps each `a` at the same time, effectively, for this example.
 
 A workaround would be to use multiple |feedkeys()| calls. |:normal| has the
 same caveats.
+
+If you make use of 'langmap', then this plugin is unlikely to work for you. It
+heavily relies on |<Plug>| maps. For more, see:
+https://github.com/vim/vim/issues/5147
 
 
 vim:tw=78:et:ft=help:norl:
