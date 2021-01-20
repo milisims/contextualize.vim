@@ -176,7 +176,11 @@ function! s:contextadd(sfile, qstr) abort " {{{1
   endif
 
   if funcparts[0] =~ '^{'
-    let Func = eval(text)
+    try
+      let Func = eval(text)
+    catch '^Vim\%((\a\+)\)\=:E488'
+      echoerr 'Contextualize: Anonymous contexts can not have arguments: "' . text . '"'
+    endtry
   elseif len(funcparts) == 1
     let Func = function(text)
   else
@@ -199,9 +203,13 @@ endfunction
 
 function! s:do() abort dict " {{{1
   for context in self.contexts
-    if self.maps[context].context()
-      return "\<Plug>" . self.maps[context].rhs[6:]
-    endif
+    try
+      if self.maps[context].context()
+        return "\<Plug>" . self.maps[context].rhs[6:]
+      endif
+    catch '^Vim\%((\a\+)\)\=:E119'
+      echoerr "Not enough arguments provided to context: '".context."' in map '".self.lhs."'"
+    endtry
   endfor
   return "\<Plug>" . self.default.rhs[6:]
 endfunction
@@ -415,4 +423,3 @@ function! s:parse_mapcmd(cmd) abort " {{{1
   endif
   return contextmap
 endfunction
-
