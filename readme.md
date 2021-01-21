@@ -49,8 +49,8 @@ Here is a similar version of `startcmd` for each:
 function! s:startcmd() abort dict
   return getcmdtype()==":" && getcmdline()==self.lhs
 endfunction
-ContextAdd namedfunctioncontext s:startcmd
-Contextualize startcmd cnoreabbrev h vert help
+ContextAdd startcmd-named s:startcmd
+Contextualize startcmd-named cnoreabbrev h vert help
 
 ContextAdd startcmd-lambda {name -> getcmdtype()==":" && getcmdline()==name}
 Contextualize startcmd-lambda h cnoreabbrev h vert help
